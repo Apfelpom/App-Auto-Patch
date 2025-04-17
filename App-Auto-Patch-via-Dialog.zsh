@@ -80,7 +80,7 @@ echo "
 
     Webhook Options:
     [--webhook-feature-all] [--webhook-feature-failures] [--webhook-feature-off]
-    [--webhook-url-slack=URL] [--webhook-url-teams=URL]
+    [--webhook-url-rocketchat=URL] [--webhook-url-slack=URL] [--webhook-url-teams=URL]
 
     Troubleshooting Options:
     [--verbose-mode] [--verbose-mode-off]
@@ -126,6 +126,7 @@ echo "
     <key>UnattendedExitSeconds</key> <integer>seconds</integer>
     <key>UseOverlayIcon</key> <string>TRUE,FALSE</string>
     <key>WebhookFeature</key> <string>FALSE,ALL,FAILURES</string>
+    <key>WebhookURLRocketchat</key> <string>URL</string>
     <key>WebhookURLSlack</key> <string>URL</string>
     <key>WebhookURLTeams</key> <string>URL</string>
     <key>WorkflowDisableAppDiscovery</key> <true/> | <false/>
@@ -440,6 +441,9 @@ get_options() {
             --webhook-feature-failures)
                 webhook_feature_option="FAILURES"
             ;;
+            --webhook-url-rocketchat=*)
+                webhook_url_rocketchat_option="${1##*=}"
+            ;;
             --webhook-url-slack=*)
                 webhook_url_slack_option="${1##*=}"
             ;;
@@ -536,6 +540,8 @@ get_preferences() {
         workflow_disable_relaunch_managed=$(defaults read "${appAutoPatchManagedPLIST}" WorkflowDisableRelaunch 2>/dev/null)
         local webhook_feature_managed
         webhook_feature_managed=$(defaults read "${appAutoPatchManagedPLIST}" WebhookFeature 2> /dev/null)
+        local webhook_url_rocketchat_managed
+        webhook_url_rocketchat_managed=$(defaults read "${appAutoPatchManagedPLIST}" WebhookURLRocketchat 2> /dev/null)
         local webhook_url_slack_managed
         webhook_url_slack_managed=$(defaults read "${appAutoPatchManagedPLIST}" WebhookURLSlack 2> /dev/null)
         local webhook_url_teams_managed
@@ -623,6 +629,8 @@ get_preferences() {
         workflow_disable_relaunch_local=$(defaults read "${appAutoPatchLocalPLIST}" WorkflowDisableRelaunch 2>/dev/null)
         local webhook_feature_local
         webhook_feature_local=$(defaults read "${appAutoPatchLocalPLIST}" WebhookFeature 2> /dev/null)
+        local webhook_url_rocketchat_local
+        webhook_url_rocketchat_local=$(defaults read "${appAutoPatchLocalPLIST}" WebhookURLRocketchat 2> /dev/null)
         local webhook_url_slack_local
         webhook_url_slack_local=$(defaults read "${appAutoPatchLocalPLIST}" WebhookURLSlack 2> /dev/null)
         local webhook_url_teams_local
@@ -713,6 +721,8 @@ get_preferences() {
     { [[ -z "${workflow_disable_relaunch_managed}" ]] && [[ -z "${workflow_disable_relaunch_option}" ]] && [[ -n "${workflow_disable_relaunch_local}" ]]; } && workflow_disable_relaunch_option="${workflow_disable_relaunch_local}"
     [[ -n "${webhook_feature_managed}" ]] && webhook_feature_option="${webhook_feature_managed}"
     { [[ -z "${webhook_feature_managed}" ]] && [[ -z "${webhook_feature_option}" ]] && [[ -n "${webhook_feature_local}" ]]; } && webhook_feature_option="${webhook_feature_local}"
+    [[ -n "${webhook_url_rocketchat_managed}" ]] && webhook_url_rocketchat_option="${webhook_url_rocketchat_managed}"
+    { [[ -z "${webhook_url_rocketchat_managed}" ]] && [[ -z "${webhook_url_rocketchat_option}" ]] && [[ -n "${webhook_url_rocketchat_local}" ]]; } && webhook_url_rocketchat_option="${webhook_url_rocketchat_local}"
     [[ -n "${webhook_url_slack_managed}" ]] && webhook_url_slack_option="${webhook_url_slack_managed}"
     { [[ -z "${webhook_url_slack_managed}" ]] && [[ -z "${webhook_url_slack_option}" ]] && [[ -n "${webhook_url_slack_local}" ]]; } && webhook_url_slack_option="${webhook_url_slack_local}"
     [[ -n "${webhook_url_teams_managed}" ]] && webhook_url_teams_option="${webhook_url_teams_managed}"
@@ -787,6 +797,7 @@ get_preferences() {
     log_verbose "WorkflowDisableAppDiscovery: $workflow_disable_app_discovery_option"
     log_verbose "WorkflowDisableRelaunch: $workflow_disable_relaunch_option"
     log_verbose "WebhookFeature: $webhook_feature_option"
+    log_verbose "WebhookURLRocketchat: $webhook_url_rocketchat_option"
     log_verbose "WebhookURLSlack: $webhook_url_slack_option"
     log_verbose "WebhookURLTeams: $webhook_url_teams_option"
     log_verbose "IgnoredLabels: $ignored_labels_option"
@@ -1273,6 +1284,13 @@ manage_parameter_options() {
         defaults delete "${appAutoPatchLocalPLIST}" WebhookFeature 2> /dev/null
     fi
     
+    # Manage ${webhook_url_rocketchat_option} and save to ${appAutoPatchLocalPLIST}.
+    if [[ -n "${webhook_url_rocketchat_option}" ]]; then
+        defaults write "${appAutoPatchLocalPLIST}" WebhookURLRocketchat -string "${webhook_url_rocketchat_option}"
+    else
+        defaults delete "${appAutoPatchLocalPLIST}" WebhookURLRocketchat 2> /dev/null
+    fi
+
     # Manage ${webhook_url_slack_option} and save to ${appAutoPatchLocalPLIST}.
     if [[ -n "${webhook_url_slack_option}" ]]; then
         defaults write "${appAutoPatchLocalPLIST}" WebhookURLSlack -string "${webhook_url_slack_option}"
@@ -1288,6 +1306,7 @@ manage_parameter_options() {
     fi
     
     { [[ "${verbose_mode_option}" == "TRUE" ]] && [[ -n "${webhook_feature_option}" ]]; } && log_verbose "webhook_feature_option is: ${webhook_feature_option}"
+    { [[ "${verbose_mode_option}" == "TRUE" ]] && [[ -n "${webhook_url_rocketchat_option}" ]]; } && log_verbose "webhook_url_rocketchat_option is: ${webhook_url_rocketchat_option}"
     { [[ "${verbose_mode_option}" == "TRUE" ]] && [[ -n "${webhook_url_slack_option}" ]]; } && log_verbose "webhook_url_slack_option is: ${webhook_url_slack_option}"
     { [[ "${verbose_mode_option}" == "TRUE" ]] && [[ -n "${webhook_url_teams_option}" ]]; } && log_verbose "webhook_url_teams_option is: ${webhook_url_teams_option}"
 }
@@ -3227,6 +3246,63 @@ appsUpToDate(){
 }
 
 webHookMessage() {
+
+    if [[ $webhook_url_rocketchat_option == "" ]]; then
+        updateScriptLog "No rocketchat URL configured"
+    else
+        updateScriptLog "Sending Rocketchat WebHook"
+    
+    # JSON handling in RC is mostly crap
+    # first we safe all \n in content to ###BR### via $(sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/###BR###/g' <<< "${formatted_result}")
+    # then we remove all \n from formally ready json string via tr -d '\n'
+    # then we recover all \n safed before in ###BR### via sed -e 's~###BR###~\\n~g'
+    # and to not be boring, RC also dislikes \n\n in a row so that we first recover doubled ###BR### via sed -e 's~###BR######BR###~\\n~g'
+    # after this, RC is surprisingly happy with the json content... 
+    
+        json='{
+            "text" : "'${appTitle}': '${webhookStatus}'",
+            "attachments": [
+                    {
+                            "title":"View computer in Jamf Pro",
+                            "title_link":"'${jamfProComputerURL}'",
+                            "fields": [
+                                    {
+                                            "short":false,
+                                            "title":"Serial Number and Computer Name:",
+                                            "value":"'${serialNumber}' on '${computerName}'"
+                                    },{
+                                            "short":false,
+                                            "title":"Computer Model:",
+                                            "value":"'${modelName}'"
+                                    },{
+                                            "short":false,
+                                            "title":"Current User:",
+                                            "value":"'${loggedInUser}'"
+                                    },{
+                                            "short":false,
+                                            "title":"Updates:",
+                                            "value":"'$(sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/###BR###/g' <<< "${formatted_result}")'"
+                                    },{
+                                            "short":false,
+                                            "title":"Errors:",
+                                            "value":"'$(sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/###BR###/g' <<< "${formatted_error_result}")'"
+                                    },{
+                                            "short":false,
+                                            "title":"Computer Record:",
+                                            "value":"'${jamfProComputerURL}'"
+                                    }
+                            ]
+                    }
+            ]
+    }'
+    
+        json=$(echo "${json}" | sed -e 's~###BR######BR###~\\n~g' | sed -e 's~###BR###~\\n~g')
+    
+        curl -s -v -X POST -H 'Content-type: application/json' \
+            -d \
+            ${json} \
+            $rocketchatURL
+    fi
     
     if [[ $webhook_url_slack_option == "" ]]; then
         log_info "No slack URL configured"
