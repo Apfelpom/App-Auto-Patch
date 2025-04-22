@@ -3251,7 +3251,29 @@ webHookMessage() {
         updateScriptLog "No rocketchat URL configured"
     else
         updateScriptLog "Sending Rocketchat WebHook"
-    
+        # If Mac is managed by Jamf, get the Jamf URL to the computer
+        if defaults read /Library/Preferences/com.jamfsoftware.jamf.plist jss_url &> /dev/null; then
+            jamfProURL=$(/usr/bin/defaults read /Library/Preferences/com.jamfsoftware.jamf.plist jss_url)
+            mdmComputerURL="${jamfProURL}/computers.html?query=${serialNumber}&queryType=COMPUTERS"
+            # If Mac is managed by Intune, get the Intune URL to the computer
+        elif [[ "$(profiles show | grep -A4 "Management Profile" | sed -n -e 's/^.*profileIdentifier: //p')" == "Microsoft.Profiles.MDM" ]]; then
+            mdmURL="https://intune.microsoft.com/#view/Microsoft_Intune_Devices/DeviceSettingsMenuBlade/~/overview/mdmDeviceId"
+            mdmComputerID="$(grep -rnwi '/Library/Logs/Microsoft/Intune' -e 'DeviceId:' | head -1 | grep -E -o 'DeviceId.{0,38}' | cut -d ' ' -f2)"
+            if [[ ! -z "$mdmComputerID" ]]; then
+                mdmComputerURL="${mdmURL}/${mdmComputerID}"
+            else
+                # For cases when the device id is not found in the logs
+                mdmComputerURL="https://intune.microsoft.com/#view/Microsoft_Intune_DeviceSettings/DevicesMacOsMenu/~/macOsDevices"
+            fi
+            # If Mac is managed by Jumpcloud, link to the Jumpcloud devices page
+        elif [[  $mdmName == "Jumpcloud" ]]; then
+            mdmComputerURL="https://console.jumpcloud.com/#/devices/list"
+        else
+            log_info "No MDM determined - webhook call will fail"
+        fi    
+
+        log_info "Sending Rocketchat WebHook"
+
     # JSON handling in RC is mostly crap
     # first we safe all \n in content to ###BR### via $(sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/###BR###/g' <<< "${formatted_result}")
     # then we remove all \n from formally ready json string via tr -d '\n'
@@ -3259,12 +3281,12 @@ webHookMessage() {
     # and to not be boring, RC also dislikes \n\n in a row so that we first recover doubled ###BR### via sed -e 's~###BR######BR###~\\n~g'
     # after this, RC is surprisingly happy with the json content... 
     
-        json='{
+        jsonPayload='{
             "text" : "'${appTitle}': '${webhookStatus}'",
             "attachments": [
                     {
                             "title":"View computer in Jamf Pro",
-                            "title_link":"'${jamfProComputerURL}'",
+                            "title_link":"'${mdmComputerURL}'",
                             "fields": [
                                     {
                                             "short":false,
@@ -3277,7 +3299,7 @@ webHookMessage() {
                                     },{
                                             "short":false,
                                             "title":"Current User:",
-                                            "value":"'${loggedInUser}'"
+                                            "value":"'${currentUserAccountName}'"
                                     },{
                                             "short":false,
                                             "title":"Updates:",
@@ -3289,19 +3311,20 @@ webHookMessage() {
                                     },{
                                             "short":false,
                                             "title":"Computer Record:",
-                                            "value":"'${jamfProComputerURL}'"
+                                            "value":"'${mdmComputerURL}'"
                                     }
                             ]
                     }
             ]
     }'
     
-        json=$(echo "${json}" | sed -e 's~###BR######BR###~\\n~g' | sed -e 's~###BR###~\\n~g')
+        jsonPayload=$(echo "${jsonPayload}" | sed -e 's~###BR######BR###~\\n~g' | sed -e 's~###BR###~\\n~g')
     
-        curl -s -v -X POST -H 'Content-type: application/json' \
+        curlResult=$(curl -s -v -X POST -H 'Content-type: application/json' \
             -d \
-            ${json} \
-            $rocketchatURL
+            ${jsonPayload} \
+            $webhook_url_rocketchat_option)
+        log_verbose "Webhook result: $curlResult"
     fi
     
     if [[ $webhook_url_slack_option == "" ]]; then
